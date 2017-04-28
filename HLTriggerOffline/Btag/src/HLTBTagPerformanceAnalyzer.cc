@@ -44,6 +44,8 @@ HLTBTagPerformanceAnalyzer::HLTBTagPerformanceAnalyzer(const edm::ParameterSet& 
 	m_mcMatching = m_mcPartons_Label != "none" ;
 
 	m_mcRadius=0.3;
+
+	modules_ = {"HEP17", "HEP18", "HEM17"};
 }
 
 
@@ -139,8 +141,17 @@ void HLTBTagPerformanceAnalyzer::analyze(const edm::Event& iEvent, const edm::Ev
 		}
 
 		for (auto & BtagJT: JetTag) {
+			std::map<std::string, bool> inmodule;
+			inmodule["HEP17"]=(BtagJT.first->phi() >= -0.87) && (BtagJT.first->phi() < -0.52) && (BtagJT.first->eta() > 1.3);
+			inmodule["HEP18"]=(BtagJT.first->phi() >= -0.52) && (BtagJT.first->phi() < -0.17) && (BtagJT.first->eta() > 1.3);
+			inmodule["HEM17"]=(BtagJT.first->phi() >= -0.87) && (BtagJT.first->phi() < -0.52) && (BtagJT.first->eta() < -1.3);
+
 			//fill 1D btag plot for 'all'
 			H1_.at(ind)[JetTagCollection_Label[ind]] -> Fill(std::fmax(0.0,BtagJT.second));
+			for (unsigned int i=0; i<modules_.size();i++){
+				if (inmodule[modules_[i]])
+				H1mod_.at(ind)[JetTagCollection_Label[ind]][modules_[i]] -> Fill(std::fmax(0.0,BtagJT.second));
+			}
 			if (MCOK) {
 				int m = closestJet(BtagJT.first, *h_mcPartons, m_mcRadius);
 				unsigned int flavour = (m != -1) ? abs((*h_mcPartons)[m].second.getFlavour()) : 0;
@@ -152,10 +163,18 @@ void HLTBTagPerformanceAnalyzer::analyze(const edm::Event& iEvent, const edm::Ev
 					TString label=JetTagCollection_Label[ind] + "__";
 					label+=flavour_str;
 					H1_.at(ind)[label.Data()]->Fill(std::fmax(0.0,BtagJT.second));	//fill 1D btag plot for 'b,c,uds'
+					for (unsigned int i=0; i<modules_.size();i++){
+						if (inmodule[modules_[i]])
+						H1mod_.at(ind)[label.Data()][modules_[i]]->Fill(std::fmax(0.0,BtagJT.second));	//fill 1D btag plot for 'b,c,uds' in modules (HEP17 etc.)
+					}
 					label=JetTagCollection_Label[ind] + "___";
 					label+=flavour_str;
 					label+=TString("_disc_pT");
 					H2_.at(ind)[label.Data()]->Fill(std::fmax(0.0,BtagJT.second),BtagJT.first->pt());	//fill 2D btag, jetPt plot for 'b,c,uds'
+					for (unsigned int i=0; i<modules_.size();i++){
+						if (inmodule[modules_[i]])
+						H2mod_.at(ind)[label.Data()][modules_[i]]->Fill(std::fmax(0.0,BtagJT.second),BtagJT.first->pt());
+					}
 				} /// for flavour
 			} /// if MCOK
 		} /// for BtagJT
@@ -179,12 +198,21 @@ void HLTBTagPerformanceAnalyzer::bookHistograms(DQMStore::IBooker & ibooker, edm
 		dqmFolder = Form("HLT/BTag/Discriminator/%s",hltPathNames_[ind].c_str());
 		H1_.push_back(std::map<std::string, MonitorElement *>());
 		H2_.push_back(std::map<std::string, MonitorElement *>());
+		H1mod_.push_back(std::map<std::string, std::map<std::string, MonitorElement *> > ());
+		H2mod_.push_back(std::map<std::string, std::map<std::string, MonitorElement *> > ());
+
 		ibooker.setCurrentFolder(dqmFolder);
 		
 		//book 1D btag plot for 'all'
 		if ( JetTagCollection_Label[ind] != "" && JetTagCollection_Label[ind] != "NULL" ) { 
 			H1_.back()[JetTagCollection_Label[ind]]       = ibooker.book1D(JetTagCollection_Label[ind] + "_all",      (JetTagCollection_Label[ind]+ "_all").c_str(),  btagBins, btagL, btagU );
 			H1_.back()[JetTagCollection_Label[ind]]      -> setAxisTitle(JetTagCollection_Label[ind] +"discriminant",1);
+			for (unsigned int i=0; i<modules_.size();i++){
+				ibooker.setCurrentFolder(dqmFolder+"/"+modules_[i]);
+				H1mod_.back()[JetTagCollection_Label[ind]][modules_[i]]       = ibooker.book1D(JetTagCollection_Label[ind] + "_all",      (JetTagCollection_Label[ind]+ "_all").c_str(),  btagBins, btagL, btagU );
+				H1mod_.back()[JetTagCollection_Label[ind]][modules_[i]]      -> setAxisTitle(JetTagCollection_Label[ind] +"discriminant",1);
+			}
+			ibooker.setCurrentFolder(dqmFolder);
 		} 
 		int nBinsPt=60;
 		double pTmin=30;
@@ -201,6 +229,12 @@ void HLTBTagPerformanceAnalyzer::bookHistograms(DQMStore::IBooker & ibooker, edm
 				//book 1D btag plot for 'b,c,light,g'
 				H1_.back()[label.Data()] = 		 ibooker.book1D(label.Data(),   Form("%s %s",JetTagCollection_Label[ind].c_str(),flavour.Data()), btagBins, btagL, btagU );
 				H1_.back()[label.Data()]->setAxisTitle("disc",1);
+				for (unsigned int i=0; i<modules_.size();i++){
+					ibooker.setCurrentFolder(dqmFolder+"/"+modules_[i]);
+					H1mod_.back()[label.Data()][modules_[i]] = 		 ibooker.book1D(label.Data(),   Form("%s %s",JetTagCollection_Label[ind].c_str(),flavour.Data()), btagBins, btagL, btagU );
+					H1mod_.back()[label.Data()][modules_[i]]->setAxisTitle("disc",1);
+				}
+				ibooker.setCurrentFolder(dqmFolder);
 				label=JetTagCollection_Label[ind]+"___";
 				label+=flavour+TString("_disc_pT");
 
@@ -208,6 +242,13 @@ void HLTBTagPerformanceAnalyzer::bookHistograms(DQMStore::IBooker & ibooker, edm
 				H2_.back()[label.Data()] =  ibooker.book2D( label.Data(), label.Data(), btagBins, btagL, btagU, nBinsPt, pTmin, pTMax );
 				H2_.back()[label.Data()]->setAxisTitle("pT",2);
 				H2_.back()[label.Data()]->setAxisTitle("disc",1);
+				for (unsigned int i=0; i<modules_.size();i++){
+					ibooker.setCurrentFolder(dqmFolder+"/"+modules_[i]);
+					H2mod_.back()[label.Data()][modules_[i]] =  ibooker.book2D( label.Data(), label.Data(), btagBins, btagL, btagU, nBinsPt, pTmin, pTMax );
+					H2mod_.back()[label.Data()][modules_[i]]->setAxisTitle("pT",2);
+					H2mod_.back()[label.Data()][modules_[i]]->setAxisTitle("disc",1);
+				}
+				ibooker.setCurrentFolder(dqmFolder);
 			}
 		} /// for mc.size()
 	} /// for hltPathNames_.size()

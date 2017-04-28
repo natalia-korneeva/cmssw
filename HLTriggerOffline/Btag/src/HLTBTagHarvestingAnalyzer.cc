@@ -8,6 +8,8 @@ HLTBTagHarvestingAnalyzer::HLTBTagHarvestingAnalyzer(const edm::ParameterSet& iC
 	m_mcLabels				= mc.getParameterNamesForType<std::vector<unsigned int> >();
 	m_histoName				= iConfig.getParameter<std::vector<std::string> >("histoName");
 	m_minTag				= iConfig.getParameter<double>("minTag");
+
+	modules_ = {"HEP17", "HEP18", "HEM17"};
 }
 
 HLTBTagHarvestingAnalyzer::~HLTBTagHarvestingAnalyzer()
@@ -32,6 +34,8 @@ HLTBTagHarvestingAnalyzer::dqmEndJob(DQMStore::IBooker & ibooker, DQMStore::IGet
 		TH1 *num =NULL; 
 		std::map<TString,TH1F> effics;
 		std::map<TString,bool> efficsOK;
+		std::map<TString,std::map<std::string,TH1F> > efficsmod;
+		std::map<TString,std::map<std::string,bool> > efficsmodOK;
 		for (unsigned int i = 0; i < m_mcLabels.size(); ++i)
 		{
 			bool isOK=false;
@@ -45,6 +49,18 @@ HLTBTagHarvestingAnalyzer::dqmEndJob(DQMStore::IBooker & ibooker, DQMStore::IGet
 				effics[flavour]=calculateEfficiency1D(ibooker,igetter,*num,*den,(label+"_efficiency_vs_disc").Data());
 				efficsOK[flavour]=isOK;
 			}
+			//for modules (HEP17 etc.)
+			for (unsigned int j=0; j<modules_.size();j++){
+				ibooker.setCurrentFolder(dqmFolder_hist+"/"+modules_[j]+"/efficiency");
+				isOK=GetNumDenumerators(ibooker,igetter,(TString(dqmFolder_hist)+"/"+modules_[j]+"/"+label).Data(),(TString(dqmFolder_hist)+"/"+modules_[j]+"/"+label).Data(),num,den,0);
+				if (isOK){
+			
+					//do the 'b-tag efficiency vs discr' plot
+					efficsmod[flavour][modules_[j]]=calculateEfficiency1D(ibooker,igetter,*num,*den,(label+"_efficiency_vs_disc").Data());
+					efficsmodOK[flavour][modules_[j]]=isOK;
+				}
+			}
+			ibooker.setCurrentFolder(effDir);
 			label= m_histoName.at(ind)+std::string("___");
 			label+=flavour+TString("_disc_pT");
 			isOK=GetNumDenumerators (ibooker,igetter,(TString(dqmFolder_hist)+"/"+label).Data(),(TString(dqmFolder_hist)+"/"+label).Data(),num,den,1);
@@ -59,6 +75,14 @@ HLTBTagHarvestingAnalyzer::dqmEndJob(DQMStore::IBooker & ibooker, DQMStore::IGet
 		if (efficsOK["b"] && efficsOK["c"])      mistagrate(ibooker,igetter,&effics["b"], &effics["c"], m_histoName.at(ind)+"_b_c_mistagrate" );
 		if (efficsOK["b"] && efficsOK["light"])  mistagrate(ibooker,igetter,&effics["b"], &effics["light"], m_histoName.at(ind)+"_b_light_mistagrate" );
 		if (efficsOK["b"] && efficsOK["g"])      mistagrate(ibooker,igetter,&effics["b"], &effics["g"], m_histoName.at(ind)+"_b_g_mistagrate" );
+
+		///save mistagrate vs b-eff plots for modules (HEP17 etc.)
+		for (unsigned int j=0; j<modules_.size();j++){
+			ibooker.setCurrentFolder(dqmFolder_hist+"/"+modules_[j]+"/efficiency");
+			if (efficsmodOK["b"][modules_[j]] && efficsmodOK["c"][modules_[j]])      mistagrate(ibooker,igetter,&efficsmod["b"][modules_[j]], &efficsmod["c"][modules_[j]], m_histoName.at(ind)+"_b_c_mistagrate" );
+			if (efficsmodOK["b"][modules_[j]] && efficsmodOK["light"][modules_[j]])  mistagrate(ibooker,igetter,&efficsmod["b"][modules_[j]], &efficsmod["light"][modules_[j]], m_histoName.at(ind)+"_b_light_mistagrate" );
+			if (efficsmodOK["b"][modules_[j]] && efficsmodOK["g"][modules_[j]])      mistagrate(ibooker,igetter,&efficsmod["b"][modules_[j]], &efficsmod["g"][modules_[j]], m_histoName.at(ind)+"_b_g_mistagrate" );
+		}
 	} /// for triggers
 }
 

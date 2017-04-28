@@ -48,6 +48,8 @@ class HLTBTagHarvestingAnalyzer : public DQMEDHarvester {
 			// Histogram handler
 			std::map<std::string, MonitorElement *> H1_;
 
+			std::vector<std::string> modules_;
+
 	};
 
 
